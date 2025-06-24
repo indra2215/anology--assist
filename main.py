@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 # --- API Configuration ---
-API_URL = "https://api-inference.huggingface.co/models/google/gemma-7b-it"
+API_URL = "https://router.huggingface.co/fireworks-ai/inference/v1/chat/completions"
 
 def get_headers():
     return {
