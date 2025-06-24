@@ -1,225 +1,202 @@
 import streamlit as st
+import os
 import requests
+import json
 
-# --- Ask user for their Hugging Face API key ---
-st.title("🧠 Analogy Assist")
-st.subheader("Learn Complex Concepts Through Simple Analogies")
-
-user_token = st.text_input(
-    "🔑 Enter your Hugging Face API token to use this app:",
-    type="password",
-    help="Get your token from https://huggingface.co/settings/tokens"
-)
-
-if not user_token:
-    st.warning("Please enter your Hugging Face API token above to continue.")
-    st.stop()
-
-hf_token = user_token
-
-# --- Page configuration (fixed comma bug) ---
+# Configure the page
 st.set_page_config(
-    page_title="Analogy Assist",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="HF Router Chat App",
+    page_icon="🤖",
+    layout="wide"
 )
 
-# --- API Configuration ---
+# API Configuration
 API_URL = "https://router.huggingface.co/fireworks-ai/inference/v1/chat/completions"
 
-def get_headers():
+def get_headers(api_key):
+    """Get headers with API token"""
+    if not api_key:
+        return None
+    
     return {
-        "Authorization": f"Bearer {hf_token}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
 
-def query_api(prompt):
-    headers = get_headers()
-    payload = {"inputs": prompt}
+def query_api(messages, api_key, model="accounts/fireworks/models/deepseek-r1-0528", max_tokens=1000, temperature=0.7):
+    """Query the HF Router API"""
+    headers = get_headers(api_key)
+    if not headers:
+        return None
+    
+    payload = {
+        "messages": messages,
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": temperature
+    }
+    
     try:
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status()
-        return response.json()
+        with st.spinner("🤔 Thinking..."):
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"API request failed: {str(e)}")
+        st.error(f"API Error: {str(e)}")
         return None
 
-def create_analogy_prompt(concept, learning_mode, difficulty_level, context=""):
-    base_context = f"Context: {context}\n" if context else ""
-    if learning_mode == "Simple Analogy Explanation":
-        prompt = f"""Explain the concept of '{concept}' using a simple, relatable analogy. 
-{base_context}
-Make it {difficulty_level} level and easy to understand. Use everyday objects or situations that most people are familiar with.
+# App Header
+st.title("🤖 HF Router Chat Application")
+st.markdown("*Chat with AI models via Hugging Face Router API*")
 
-Format your response as:
-**Concept:** {concept}
-**Analogy:** [Your analogy here]
-**Explanation:** [How the analogy relates to the concept]
-"""
-    elif learning_mode == "Multiple Analogies Comparison":
-        prompt = f"""Provide 3 different analogies to explain '{concept}' from different perspectives. 
-{base_context}
-Make it {difficulty_level} level. Show how each analogy highlights different aspects of the concept.
-
-Format your response as:
-**Concept:** {concept}
-**Analogy 1:** [First analogy and explanation]
-**Analogy 2:** [Second analogy and explanation]  
-**Analogy 3:** [Third analogy and explanation]
-**Summary:** [How all analogies work together to explain the concept]
-"""
-    elif learning_mode == "Interactive Analogy Building":
-        prompt = f"""Help me build an analogy for '{concept}' step by step. 
-{base_context}
-Make it {difficulty_level} level. Start by asking what familiar thing or situation I'd like to compare it to, then guide me through building the analogy.
-
-Start with: "Let's build an analogy for {concept} together! What's something from your daily life that you're very familiar with that we could potentially compare to {concept}?"
-"""
-    elif learning_mode == "Problem-Solving with Analogies":
-        prompt = f"""I need to solve a problem or understand a challenge related to '{concept}'. 
-{base_context}
-Make it {difficulty_level} level. Use analogies to help me understand the problem and potential solutions.
-
-Format your response as:
-**Problem/Challenge:** [Identify the key challenge with {concept}]
-**Analogy:** [Use an analogy to explain the problem]
-**Solution Approach:** [Use the same analogy to suggest solutions]
-**Application:** [How to apply this understanding practically]
-"""
-    else:  # Story-Based Learning
-        prompt = f"""Create an engaging story that naturally incorporates and explains '{concept}' through analogies. 
-{base_context}
-Make it {difficulty_level} level. The story should make the concept memorable and easy to understand.
-
-Format your response as:
-**Story Title:** [Creative title]
-**Story:** [Your engaging story that explains {concept}]
-**Key Takeaways:** [Main points about {concept} from the story]
-"""
-    return prompt
-
-# --- Sidebar for configuration ---
-st.sidebar.header("⚙️ Configuration")
-
-learning_modes = [
-    "Simple Analogy Explanation",
-    "Multiple Analogies Comparison", 
-    "Interactive Analogy Building",
-    "Problem-Solving with Analogies",
-    "Story-Based Learning"
-]
-
-selected_mode = st.sidebar.selectbox(
-    "🎯 Choose Learning Mode:",
-    learning_modes,
-    help="Select how you'd like to receive analogy-based understanding"
-)
-
-difficulty_level = st.sidebar.select_slider(
-    "📊 Difficulty Level:",
-    options=["Beginner", "Intermediate", "Advanced"],
-    value="Intermediate"
-)
-
-mode_descriptions = {
-    "Simple Analogy Explanation": "Get a single, clear analogy to understand any concept",
-    "Multiple Analogies Comparison": "Compare multiple analogies to see different aspects of a concept",
-    "Interactive Analogy Building": "Work together to build custom analogies step by step",
-    "Problem-Solving with Analogies": "Use analogies to understand and solve problems",
-    "Story-Based Learning": "Learn through engaging stories that incorporate analogies"
-}
-
-st.sidebar.info(f"**{selected_mode}:** {mode_descriptions[selected_mode]}")
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.markdown("### 💡 What would you like to understand?")
-    if 'selected_concept' in st.session_state:
-        default_concept = st.session_state.selected_concept
-        del st.session_state.selected_concept
-    else:
-        default_concept = ""
-    concept = st.text_input(
-        "Enter a concept, topic, or idea:",
-        value=default_concept,
-        placeholder="e.g., Machine Learning, Photosynthesis, Stock Market, Quantum Physics...",
-        help="Type any concept you'd like to understand through analogies"
+# Sidebar for configuration
+with st.sidebar:
+    st.header("🔑 API Configuration")
+    
+    # API Key input
+    api_key = st.text_input(
+        "Hugging Face API Token",
+        type="password",
+        placeholder="hf_xxxxxxxxxxxxxxxxx",
+        help="Enter your Hugging Face API token. Get one at https://huggingface.co/settings/tokens"
     )
-    context = st.text_area(
-        "Additional Context (Optional):",
-        placeholder="Provide any specific context, background, or particular aspect you want to focus on...",
-        height=100,
-        help="This helps create more targeted and relevant analogies"
-    )
-
-with col2:
-    st.markdown("### 📚 Quick Examples")
-    example_concepts = [
-        "Artificial Intelligence",
-        "Blockchain Technology", 
-        "Climate Change",
-        "Stock Market Volatility",
-        "Neural Networks",
-        "Photosynthesis",
-        "Supply Chain Management",
-        "Quantum Computing"
-    ]
-    st.markdown("**Try these concepts:**")
-    for example in example_concepts[:4]:
-        if st.button(example, key=f"example_{example}"):
-            st.session_state.selected_concept = example
-
-if st.button("🚀 Generate Analogy", type="primary", use_container_width=True):
-    if not concept:
-        st.warning("Please enter a concept to explain!")
+    
+    if not api_key:
+        st.warning("⚠️ Please enter your HF API token to use the app")
+        st.markdown("""
+        **To get your API token:**
+        1. Go to [Hugging Face Settings](https://huggingface.co/settings/tokens)
+        2. Create a new token with 'Read' permissions
+        3. Copy and paste it above
+        """)
     else:
-        with st.spinner("Creating your analogy..."):
-            prompt = create_analogy_prompt(concept, selected_mode, difficulty_level, context)
-            response = query_api(prompt)
-            if response and isinstance(response, list) and "generated_text" in response[0]:
-                st.markdown("---")
-                st.markdown("### 🎯 Your Analogy-Based Explanation")
-                explanation = response[0]["generated_text"].strip()
-                st.markdown(explanation)
-                st.markdown("---")
-                st.markdown("### 💬 Was this helpful?")
-                colf1, colf2, colf3 = st.columns(3)
-                with colf1:
-                    if st.button("👍 Very Helpful"):
-                        st.success("Thank you for your feedback!")
-                with colf2:
-                    if st.button("👌 Somewhat Helpful"):
-                        st.info("Thanks! We'll keep improving.")
-                with colf3:
-                    if st.button("👎 Not Helpful"):
-                        st.warning("Sorry about that. Try a different learning mode or add more context.")
-                if st.button("🔄 Try Different Learning Mode"):
-                    st.rerun()
-            else:
-                st.error("Failed to generate analogy. Please check your API configuration and try again.")
+        st.success("✅ API token entered")
+    
+    st.divider()
+    
+    st.header("⚙️ Model Settings")
+    
+    # Model selection
+    model = st.selectbox(
+        "Model",
+        ["accounts/fireworks/models/deepseek-r1-0528"],
+        help="Select the AI model to use"
+    )
+    
+    # Parameters
+    max_tokens = st.slider("Max Tokens", 100, 2000, 1000, 50)
+    temperature = st.slider("Temperature", 0.0, 2.0, 0.7, 0.1)
+    
+    st.divider()
+    
+    # Clear chat button
+    if st.button("🗑️ Clear Chat", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
 
-st.markdown("---")
-st.markdown("### 💡 Tips for Better Analogies")
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-tips_col1, tips_col2 = st.columns(2)
+# Display chat history
+chat_container = st.container()
+with chat_container:
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-with tips_col1:
-    st.markdown("""
-    **For Better Results:**
-    - Be specific about what aspect you want to understand
-    - Provide context about your background knowledge
-    - Try different learning modes for the same concept
-    - Use the difficulty level that matches your needs
+# Chat input
+if prompt := st.chat_input("Ask me anything...", disabled=not api_key):
+    if not api_key:
+        st.error("Please enter your API token in the sidebar first.")
+        st.stop()
+    
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    
+    # Get AI response
+    response_data = query_api(st.session_state.messages, api_key, model, max_tokens, temperature)
+    
+    if response_data and "choices" in response_data:
+        assistant_message = response_data["choices"][0]["message"]["content"]
+        
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": assistant_message})
+        
+        # Display assistant response
+        with st.chat_message("assistant"):
+            st.markdown(assistant_message)
+    
+    # Rerun to update the display
+    st.rerun()
+
+# Example usage section
+with st.expander("📋 Example Code", expanded=False):
+    st.code('''
+import requests
+
+API_URL = "https://router.huggingface.co/fireworks-ai/inference/v1/chat/completions"
+
+def query(api_token, payload):
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json"
+    }
+    response = requests.post(API_URL, headers=headers, json=payload)
+    return response.json()
+
+# Usage with your API token
+api_token = "hf_your_token_here"
+response = query(api_token, {
+    "messages": [
+        {
+            "role": "user",
+            "content": "What is the capital of France?"
+        }
+    ],
+    "model": "accounts/fireworks/models/deepseek-r1-0528"
+})
+
+print(response["choices"][0]["message"])
+    ''', language='python')
+
+# Footer
+st.divider()
+st.markdown("*Built with Streamlit and Hugging Face Router API*")
+
+# Instructions
+if not api_key:
+    st.info("""
+    🔑 **API Token Required**
+    
+    This app requires your personal Hugging Face API token to function.
+    
+    **To get started:**
+    1. **Get your API token**: Visit [Hugging Face Tokens](https://huggingface.co/settings/tokens)
+    2. **Create a new token** with 'Read' permissions
+    3. **Enter the token** in the sidebar
+    4. **Start chatting** with the AI model!
+    
+    **Why do you need your own token?**
+    - Ensures fair usage and rate limiting per user
+    - Gives you direct access to HF Router API
+    - No shared resource limitations
     """)
-
-with tips_col2:
-    st.markdown("""
-    **Learning Modes Guide:**
-    - **Simple:** Quick, single analogy explanation
-    - **Multiple:** Compare different perspectives
-    - **Interactive:** Build analogies together
-    - **Problem-Solving:** Focus on practical applications
-    - **Story-Based:** Learn through memorable narratives
+elif not st.session_state.messages:
+    st.info("""
+    👋 **Ready to Chat!** 
+    
+    Your API token is configured. You can now:
+    - Type any question in the chat input below
+    - Adjust model parameters in the sidebar
+    - View your conversation history
+    
+    **Example questions to try:**
+    - "What is the capital of France?"
+    - "Explain quantum computing in simple terms"
+    - "Write a short poem about technology"
     """)
